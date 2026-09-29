@@ -15,6 +15,8 @@ namespace SongRankedBadge
     [HarmonyPatch(typeof(LevelListTableCell), nameof(LevelListTableCell.SetDataFromLevelAsync))]
     public class LevelListTableCellPatch
     {
+        private const float OriginalBadgeBottomOffset = 0.5f;
+
         // DF166FFF
         private static readonly Color c_promoOG = new Color32(0xDF, 0x16, 0x6F, 0xFF);
         private static readonly Color c_curated = new Color32(0x00,0xBC,0x8C, 0xFF);
@@ -72,6 +74,11 @@ namespace SongRankedBadge
                 var shouldApply = rankedStatus != RankStatus.None;
 
                 ____promoBadgeGo.SetActive(isPromoted || shouldApply);
+
+                var badgeRect = ____promoBadgeGo.GetComponent<RectTransform>();
+                var badgePosition = badgeRect.anchoredPosition;
+                badgePosition.y = shouldApply ? 0f : OriginalBadgeBottomOffset;
+                badgeRect.anchoredPosition = badgePosition;
 
                 var promoTextGo = ____promoBadgeGo.transform.Find("PromoText").gameObject;
                 var localization = promoTextGo.GetComponent<LocalizedTextMeshProUGUI>();
