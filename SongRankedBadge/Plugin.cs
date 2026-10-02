@@ -40,5 +40,12 @@ namespace SongRankedBadge
         {
             BSMLSettings.Instance.AddSettingsMenu("Ranked Badge", "SongRankedBadge.UI.configMenu.bsml", _modSettings);
         }
+
+        [OnExit]
+        public void OnApplicationQuit()
+        {
+            MainMenuAwaiter.MainMenuInitializing -= OnMenuLoad;
+            RankStatusManager.Instance.Stop();
+        }
     }
 }

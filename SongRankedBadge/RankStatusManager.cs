@@ -1,5 +1,6 @@
 ﻿using System.Linq;
 using System.Threading.Tasks;
+using System.Threading;
 using SongDetailsCache;
 using SongDetailsCache.Structs;
 
@@ -10,28 +11,70 @@ namespace SongRankedBadge
         internal static readonly RankStatusManager Instance = new RankStatusManager();
         
         private SongDetails? _songDetails = null;
+        private Task<SongDetails>? _initialization;
+        private bool _stopped;
+        private bool _failureLogged;
 
 
         internal void Init()
         {
-            Task.Factory.StartNew(async () =>
+            if (_initialization != null || _stopped)
+                return;
+
+            Plugin.Log.Debug("Loading song details...");
+            _initialization = Task.Run(InitializeSongDetails);
+            _initialization.ContinueWith(ObserveFailure, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+
+        private static async Task<SongDetails> InitializeSongDetails()
+            => await SongDetails.Init().ConfigureAwait(false);
+
+        private static void ObserveFailure(Task<SongDetails> initialization)
+            => _ = initialization.Exception;
+
+        internal void Stop()
+        {
+            _stopped = true;
+            _songDetails = null;
+        }
+
+        private bool PublishInitialization()
+        {
+            if (_stopped)
+                return false;
+            if (_songDetails != null)
+                return true;
+            if (_initialization == null || !_initialization.IsCompleted)
+                return false;
+            if (_initialization.Status != TaskStatus.RanToCompletion)
             {
-                Plugin.Log.Debug("Loading song details...");
-                _songDetails = await SongDetails.Init(); 
-                Plugin.Log.Debug("Song details loaded.");
-            });
+                if (!_failureLogged)
+                {
+                    _failureLogged = true;
+                    Plugin.Log.Warn("Unable to load song details.");
+                    if (_initialization.Exception != null)
+                        Plugin.Log.Debug(_initialization.Exception);
+                }
+                return false;
+            }
+
+            _songDetails = _initialization.GetAwaiter().GetResult();
+            Plugin.Log.Debug("Song details loaded.");
+            return true;
         }
 
         internal RankStatus GetSongRankedStatus(string hash)
         {
-            if (_songDetails == null)
+            if (!PublishInitialization())
             {
                 // Data not ready yet
                 return RankStatus.None;
             }
             
             hash = hash.ToLower();
-            if (_songDetails.songs.FindByHash(hash, out var song))
+            if (_songDetails!.songs.FindByHash(hash, out var song))
             {
                 var rankedStates = song.rankedStates;
                 var uploadFlags = song.uploadFlags;
